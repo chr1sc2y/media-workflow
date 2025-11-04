@@ -1,6 +1,7 @@
+import json
 import os
 import subprocess
-import json
+
 from .core import FileContext
 
 # ffmpeg
@@ -216,31 +217,40 @@ def compress_drone_video(ctx: FileContext, scale="1920:1080", bitrate="15M", fps
         bitrate: Target video bitrate (default: "15M" for high quality, use "10M" for smaller size)
         fps: Target frame rate (default: None to keep original fps)
     """
-    # Get original video info
-    width, height = get_video_resolution(ctx.original_file)
-    original_fps = get_video_fps(ctx.original_file)
-    original_bitrate_bps = get_video_bitrate(ctx.original_file)
+    # Check if file exists
+    if not os.path.exists(ctx.original_file):
+        print(f"⚠️  Skipping: File not found - {os.path.basename(ctx.original_file)}")
+        return False
     
-    # Use original fps if not specified
-    if fps is None:
-        fps = original_fps if original_fps > 0 else 30
-    
-    # Format display strings
-    original_resolution = f"{width}x{height}" if width > 0 else "Unknown"
-    original_mbps = original_bitrate_bps / 1_000_000 if original_bitrate_bps > 0 else 0
-    target_mbps = float(bitrate.rstrip('Mk')) if isinstance(bitrate, str) else bitrate
-    
-    # Print processing info
-    print(f"📊 {original_resolution} → 1920x1080 | {original_fps:.0f}fps → {fps:.0f}fps | Bitrate: {original_mbps:.1f}M → {target_mbps}M")
-    
-    # Build command with audio processing
-    cmd = "{0} -i {1} -vf scale={2} -r {3} \
-        -c:v hevc_videotoolbox -tag:v hvc1 -b:v {4} \
-        -c:a aac -b:a 128k \
-        -map_metadata 0 {5} -y".format(
-        ffmpeg_bin, ctx.original_file_name, scale, fps, bitrate, ctx.temp_file_name
-    )
-    return execute(cmd, ctx)
+    try:
+        # Get original video info
+        width, height = get_video_resolution(ctx.original_file)
+        original_fps = get_video_fps(ctx.original_file)
+        original_bitrate_bps = get_video_bitrate(ctx.original_file)
+        
+        # Use original fps if not specified
+        if fps is None:
+            fps = original_fps if original_fps > 0 else 30
+        
+        # Format display strings
+        original_resolution = f"{width}x{height}" if width > 0 else "Unknown"
+        original_mbps = original_bitrate_bps / 1_000_000 if original_bitrate_bps > 0 else 0
+        target_mbps = float(bitrate.rstrip('Mk')) if isinstance(bitrate, str) else bitrate
+        
+        # Print processing info
+        print(f"📊 {original_resolution} → 1920x1080 | {original_fps:.0f}fps → {fps:.0f}fps | Bitrate: {original_mbps:.1f}M → {target_mbps}M")
+        
+        # Build command with audio processing
+        cmd = "{0} -i {1} -vf scale={2} -r {3} \
+            -c:v hevc_videotoolbox -tag:v hvc1 -b:v {4} \
+            -c:a aac -b:a 128k \
+            -map_metadata 0 {5} -y".format(
+            ffmpeg_bin, ctx.original_file_name, scale, fps, bitrate, ctx.temp_file_name
+        )
+        return execute(cmd, ctx)
+    except Exception as e:
+        print(f"⚠️  Error processing {os.path.basename(ctx.original_file)}: {e}")
+        return False
 
 
 def compress_rate(ctx: FileContext, video_rate="8M", audio_rate="128k", reserved=None) -> bool:

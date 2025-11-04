@@ -1,7 +1,7 @@
 import os
 import shutil
-from typing import Callable
 from pathlib import Path
+from typing import Callable
 
 
 class FileContext:
@@ -75,15 +75,39 @@ def traverse(
         recursive: If True, recursively process subdirectories
     """
     directory = Path(dir)
+    
+    # Check if directory exists
+    if not directory.exists():
+        print(f"⚠️  Directory not found: {directory}")
+        return
+    
+    if not directory.is_dir():
+        print(f"⚠️  Not a directory: {directory}")
+        return
+    
     try:
         for obj in directory.iterdir():
-            obj_relative_path = os.path.join(dir, obj)
-            if not os.path.isfile(obj_relative_path):
-                # Only recurse into subdirectories if recursive=True
-                if recursive:
-                    traverse(obj_relative_path, format, func, var1, var2, var3, recursive)
-            elif obj_relative_path.lower().endswith(format.lower()):
-                ctx = FileContext(obj_relative_path)
-                func(ctx, var1, var2, var3)
-    except (OSError, IOError) as e:
-        print(f"⚠️  Skip unaccessible dir: {directory}\nError info: {e}")
+            try:
+                obj_relative_path = os.path.join(dir, obj)
+                
+                # Check if file/directory exists before processing
+                if not os.path.exists(obj_relative_path):
+                    print(f"⚠️  Skipping: Path no longer exists - {obj_relative_path}")
+                    continue
+                
+                if not os.path.isfile(obj_relative_path):
+                    # Only recurse into subdirectories if recursive=True
+                    if recursive:
+                        traverse(obj_relative_path, format, func, var1, var2, var3, recursive)
+                elif obj_relative_path.lower().endswith(format.lower()):
+                    try:
+                        ctx = FileContext(obj_relative_path)
+                        func(ctx, var1, var2, var3)
+                    except Exception as e:
+                        print(f"⚠️  Error processing file {obj_relative_path}: {e}")
+                        continue
+            except (OSError, IOError, PermissionError) as e:
+                print(f"⚠️  Cannot access {obj}: {e}")
+                continue
+    except (OSError, IOError, PermissionError) as e:
+        print(f"⚠️  Cannot access directory {directory}: {e}")
