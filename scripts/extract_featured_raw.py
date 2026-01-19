@@ -4,18 +4,19 @@ Featured Files Extractor
 
 This script extracts featured files based on raw directory contents:
 1. Extract all file names (without extensions) from the 'raw' subdirectory
-2. Find all files with matching names in the target directory (ignoring extensions)
+2. Find all files with matching names in the target directory and common image subdirectories
+   (heif, hif, jpeg, jpg, etc.)
 3. Copy these matching files to a new 'featured' subdirectory
 
 Usage:
-    python extract_featured.py [directory_path]
+    python extract_featured_raw.py [directory_path]
     
     If no directory is provided, the script will prompt for one interactively.
     
 Examples:
-    python extract_featured.py /path/to/photos
-    python extract_featured.py "C:\\Users\\Photos\\Event"
-    python extract_featured.py  # Interactive mode
+    python extract_featured_raw.py /path/to/photos
+    python extract_featured_raw.py "C:\\Users\\Photos\\Event"
+    python extract_featured_raw.py  # Interactive mode
 """
 
 import argparse
@@ -23,6 +24,10 @@ import os
 import shutil
 import sys
 from pathlib import Path
+
+# Common image format subdirectories to search
+# Empty string represents the base directory itself
+IMAGE_SUBDIRS = ['', 'heif', 'hif', 'jpeg', 'jpg', 'HEIF', 'HIF', 'JPEG', 'JPG']
 
 
 def get_target_directory():
@@ -50,7 +55,7 @@ Examples:
     parser.add_argument(
         '--version', 
         action='version', 
-        version='%(prog)s 1.1'
+        version='%(prog)s 1.2'
     )
     
     args = parser.parse_args()
@@ -132,23 +137,50 @@ def process_files(base_dir):
         
     print(f"   📊 Total unique file names: {len(raw_file_names)}")
     
-    # Step 2: Find all matching files in target directory
+    # Step 2: Find all matching files in target directory and image subdirectories
     print(f"\n{'Step 2: Finding matching files':-<50}")
+    print(f"   Searching in: base directory + {[d for d in IMAGE_SUBDIRS if d]}")
     matching_files = []
+    searched_dirs = []
     
-    try:
-        for file_path in base_dir.iterdir():
-            if file_path.is_file() and file_path.name != "extract_featured.py":
-                file_stem = file_path.stem
-                if file_stem in raw_file_names:
-                    matching_files.append(file_path)
-                    print(f"   ✓ Match: {file_path.name}")
-    except PermissionError:
-        print(f"Error: Permission denied accessing '{base_dir}'")
-        return False
+    for subdir in IMAGE_SUBDIRS:
+        if subdir:
+            search_dir = base_dir / subdir
+        else:
+            search_dir = base_dir
+        
+        # Skip if directory doesn't exist
+        if not search_dir.exists() or not search_dir.is_dir():
+            continue
+        
+        # Skip raw and featured directories
+        if search_dir.name.lower() in ('raw', 'featured'):
+            continue
+            
+        searched_dirs.append(search_dir)
+        
+        try:
+            for file_path in search_dir.iterdir():
+                if file_path.is_file():
+                    file_stem = file_path.stem
+                    # Skip system files
+                    if file_stem.startswith('.'):
+                        continue
+                    if file_stem in raw_file_names:
+                        matching_files.append(file_path)
+                        # Show relative path for subdirectory files
+                        if subdir:
+                            print(f"   ✓ Match: {subdir}/{file_path.name}")
+                        else:
+                            print(f"   ✓ Match: {file_path.name}")
+        except PermissionError:
+            print(f"   ⚠️  Permission denied: {search_dir}")
+            continue
+    
+    print(f"   📂 Searched directories: {len(searched_dirs)}")
     
     if not matching_files:
-        print("   Warning: No matching files found in target directory.")
+        print("   Warning: No matching files found in any searched directory.")
         return False
         
     print(f"   📊 Total matching files: {len(matching_files)}")
@@ -164,12 +196,20 @@ def process_files(base_dir):
         # Copy files
         copied_count = 0
         failed_count = 0
+        skipped_count = 0
         
         for file_path in matching_files:
             try:
                 destination = featured_dir / file_path.name
+                # Check for duplicate filenames from different directories
+                if destination.exists():
+                    print(f"   ⏭️  Skipped (already exists): {file_path.name}")
+                    skipped_count += 1
+                    continue
                 shutil.copy2(file_path, destination)
-                print(f"   ✓ Copied: {file_path.name}")
+                # Show source directory for clarity
+                rel_path = file_path.relative_to(base_dir) if file_path.is_relative_to(base_dir) else file_path.name
+                print(f"   ✓ Copied: {rel_path}")
                 copied_count += 1
             except Exception as e:
                 print(f"   ✗ Failed: {file_path.name} - {e}")
@@ -178,6 +218,8 @@ def process_files(base_dir):
         # Summary
         print(f"\n{'SUMMARY':-<50}")
         print(f"   ✅ Successfully copied: {copied_count} files")
+        if skipped_count > 0:
+            print(f"   ⏭️  Skipped (duplicates): {skipped_count} files")
         if failed_count > 0:
             print(f"   ❌ Failed to copy: {failed_count} files")
         print(f"   📂 Destination: {featured_dir}")
