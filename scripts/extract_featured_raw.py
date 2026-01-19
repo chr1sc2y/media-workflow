@@ -2,10 +2,10 @@
 """
 Featured Files Extractor
 
-This script extracts featured files based on raw directory contents:
-1. Extract all file names (without extensions) from the 'raw' subdirectory
-2. Find all files with matching names in the target directory and common image subdirectories
-   (heif, hif, jpeg, jpg, etc.)
+This script extracts featured files based on raw/export directory contents:
+1. Extract all file names (without extensions) from the 'raw/export' subdirectory
+2. Find all files with matching names (case-insensitive) in the target directory 
+   and common image subdirectories (heif, hif, jpeg, jpg, etc.)
 3. Copy these matching files to a new 'featured' subdirectory
 
 Usage:
@@ -50,12 +50,12 @@ Examples:
     parser.add_argument(
         'directory', 
         nargs='?', 
-        help='Target directory path containing the "raw" subdirectory (optional - will prompt if not provided)'
+        help='Target directory path containing the "raw/export" subdirectory (optional - will prompt if not provided)'
     )
     parser.add_argument(
         '--version', 
         action='version', 
-        version='%(prog)s 1.2'
+        version='%(prog)s 1.5'
     )
     
     args = parser.parse_args()
@@ -105,30 +105,46 @@ def process_files(base_dir):
     print(f"FEATURED FILES EXTRACTOR")
     print(f"{'='*60}")
     print(f"Working directory: {base_dir}")
-    print(f"Raw directory: {raw_dir}")
-    print(f"Featured directory: {featured_dir}")
     
     # Check if raw directory exists
     if not raw_dir.exists():
         print(f"\nError: 'raw' subdirectory does not exist in '{base_dir}'")
-        print("Please ensure the target directory contains a 'raw' subdirectory.")
         return False
     
-    # Step 1: Extract all file names (without extensions) from raw directory
-    print(f"\n{'Step 1: Scanning raw directory':-<50}")
+    # Find 'export' subdirectory (case-insensitive)
+    raw_export_dir = None
+    try:
+        for subdir in raw_dir.iterdir():
+            if subdir.is_dir() and subdir.name.lower() == 'export':
+                raw_export_dir = subdir
+                break
+    except PermissionError:
+        print(f"Error: Permission denied accessing '{raw_dir}'")
+        return False
+    
+    if raw_export_dir is None:
+        print(f"\nError: 'export' subdirectory (case-insensitive) not found in '{raw_dir}'")
+        print("Please ensure the target directory contains a 'raw/export' or 'raw/Export' subdirectory.")
+        return False
+    
+    print(f"Raw export directory: {raw_export_dir}")
+    print(f"Featured directory: {featured_dir}")
+    
+    # Step 1: Extract all file names (without extensions) from raw/export directory
+    print(f"\n{'Step 1: Scanning raw/export directory':-<50}")
     raw_file_names = set()
     
     try:
-        for file_path in raw_dir.iterdir():
+        for file_path in raw_export_dir.iterdir():
             if file_path.is_file():
-                # Get filename without extension
-                file_stem = file_path.stem
+                # Get filename without extension (lowercase for case-insensitive matching)
+                file_stem = file_path.stem.lower()
                 # Skip system files like .DS_Store
                 if not file_stem.startswith('.'):
                     raw_file_names.add(file_stem)
-                    print(f"   ✓ Found: {file_stem}")
+                    print(f"   ✓ Found: {file_path.name}")
     except PermissionError:
-        print(f"Error: Permission denied accessing '{raw_dir}'")
+        print(f"Error: Permission denied accessing '{raw_export_dir}'")
         return False
     
     if not raw_file_names:
@@ -162,7 +178,8 @@ def process_files(base_dir):
         try:
             for file_path in search_dir.iterdir():
                 if file_path.is_file():
-                    file_stem = file_path.stem
+                    # Use lowercase for case-insensitive matching
+                    file_stem = file_path.stem.lower()
                     # Skip system files
                     if file_stem.startswith('.'):
                         continue
